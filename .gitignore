@@ -1,0 +1,117 @@
+# =========================
+# FaultFormer - .gitignore
+# =========================
+
+# =====================
+# Python
+# =====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# =====================
+# Virtual Environments
+# =====================
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# =====================
+# IDE / Editor
+# =====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.spyderproject
+.spyproject
+
+# =====================
+# OS Generated
+# =====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =====================
+# Jupyter Notebooks
+# =====================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# =====================
+# Data Files (Large)
+# =====================
+/data/
+*.mat
+*.rar
+*.zip
+*.tar.gz
+*.h5
+*.hdf5
+
+# =====================
+# Model Weights
+# =====================
+weights/
+*.weights.h5
+*.keras
+*.ckpt
+*.ckpt.*
+checkpoint
+
+# =====================
+# Logs & Outputs
+# =====================
+logs/
+*.log
+tensorboard/
+runs/
+wandb/
+
+# =====================
+# Gradio / Temp
+# =====================
+.gradio/
+flagged/
+
+# =====================
+# Results (Optional - uncomment to include)
+# =====================
+# Uncomment below if you want to KEEP result images in repo
+# !assets/
+# assets/*.png
+
+# =====================
+# Secrets & Config
+# =====================
+.env
+*.pem
+secrets.json
+config.local.yaml
