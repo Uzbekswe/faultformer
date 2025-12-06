@@ -1,6 +1,5 @@
 # ===========================================
-#                 Faultformer: Cross-Domain Bearing Fault Diagnosis using
-# Transformer-Based Architectures
+#                 Faultformer: Cross-Domain Bearing Fault Diagnosis using Transformer-Based Architectures
 # ===========================================
 
 <div align="center">
