@@ -372,7 +372,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📧 Contact
 
-**Mukhammadali Bakhodirov🇺🇿** - uzbekswe@gmail.com
+**Mukhammadali Bakhodirov 🇺🇿** - uzbekswe@gmail.com
 
 Project Link: [https://github.com/Uzbekswe/faultformer](https://github.com/Uzbekswe/faultformer)
 
