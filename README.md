@@ -372,9 +372,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📧 Contact
 
-**Your Name** - your.email@example.com
+**Your Name** - uzbekswe@gmail.com
 
-Project Link: [https://github.com/yourusername/faultformer](https://github.com/yourusername/faultformer)
+Project Link: [https://github.com/Uzbekswe/faultformer](https://github.com/Uzbekswe/faultformer)
 
 ---
 
