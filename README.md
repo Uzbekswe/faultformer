@@ -72,21 +72,21 @@
 │              │                                                      │
 │              ▼                                                      │
 │   ┌─────────────────────────────────────────────┐                   │
-│   │         Hierarchical CNN Tokenizer           │                  │
+│   │         Hierarchical CNN Tokenizer          │                   │
 │   │  Conv1D (k=10, s=4) → BatchNorm → GELU      │                   │
 │   │  Conv1D (k=3, s=4) → BatchNorm → GELU       │                   │
-│   │                                              │                  │
+│   │                                             │                   │
 │   │  Output: 128 tokens × 64 dimensions         │                   │
 │   └─────────────────────────────────────────────┘                   │
 │              │                                                      │
 │              ▼                                                      │
 │   ┌─────────────────────────────────────────────┐                   │
-│   │       Positional Embeddings (Learnable)      │                  │
+│   │       Positional Embeddings (Learnable)     │                   │
 │   └─────────────────────────────────────────────┘                   │
 │              │                                                      │
 │              ▼                                                      │
 │   ┌─────────────────────────────────────────────┐                   │
-│   │         Transformer Encoder × 4              │                  │
+│   │         Transformer Encoder × 4             │                   │
 │   │  ┌───────────────────────────────────────┐  │                   │
 │   │  │  LayerNorm → Multi-Head Attention     │  │                   │
 │   │  │  (4 heads, RoPE support)              │  │                   │
@@ -98,7 +98,7 @@
 │              ▼                                                      │
 │   ┌─────────────────────────────────────────────┐                   │
 │   │  Global Average Pooling → Dense(Softmax)    │                   │
-│   │                                              │                  │
+│   │                                             │                   │
 │   │  Output: 3 classes (Healthy, Inner, Outer)  │                   │
 │   └─────────────────────────────────────────────┘                   │
 │                                                                     │
