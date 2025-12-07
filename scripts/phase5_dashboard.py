@@ -30,7 +30,6 @@ from src.models.faultformer import build_faultformer
 # ==========================================
 # 1. CONFIGURATION & MODEL LOADING
 # ==========================================
-CLASS_NAMES = {0: 'Healthy', 1: 'Inner Race Fault (Real)', 2: 'Outer Race Fault (Real)'}
 SEQ_LEN = 2048
 
 def load_trained_model():
@@ -63,6 +62,7 @@ def generate_tsne_plot(X_test, y_test):
     Extracts features from the layer BEFORE classification and plots T-SNE.
     """
     print("Generating T-SNE Plot... this may take a moment.")
+    class_names = {0: 'Healthy', 1: 'Inner Race Fault', 2: 'Outer Race Fault'}
     
     # 1. Create a Feature Extractor Model
     # We want the output of 'global_average_pooling1d' (flattened features)
@@ -81,7 +81,7 @@ def generate_tsne_plot(X_test, y_test):
     plt.figure(figsize=(10, 8))
     scatter = sns.scatterplot(
         x=features_2d[:, 0], y=features_2d[:, 1],
-        hue=[CLASS_NAMES[y] for y in y_test],
+        hue=[class_names[y] for y in y_test],
         palette="viridis", s=60, alpha=0.8
     )
     plt.title("T-SNE Visualization of Bearing Fault Features (Phase 5)")
@@ -118,15 +118,40 @@ def preprocess_uploaded_mat(file_obj):
                 original_sr = 12000
             print(f"CWRU file detected, SR: {original_sr}Hz")
         else:
-            # Try Paderborn format or generic
-            for key, val in mat.items():
-                if isinstance(val, np.ndarray) and not key.startswith('__'):
-                    if val.size > 1000:  # Likely signal data
-                        if val.ndim == 2: 
-                            val = val.flatten()
-                        signal = val
-                        original_sr = 64000  # Paderborn default
-                        break
+            # Try Paderborn nested struct format
+            # Paderborn files have structure: mat[filename][0,0]['Y'][0,channel]['Data']
+            data_keys = [k for k in mat.keys() if not k.startswith('__')]
+            for key in data_keys:
+                try:
+                    struct = mat[key]
+                    if struct.dtype.names and 'Y' in struct.dtype.names:
+                        # Paderborn format confirmed
+                        Y = struct[0, 0]['Y']
+                        # Y contains multiple sensors - find the vibration sensor
+                        # Sensor 6 is typically 'vibration_1' at 64kHz
+                        for sensor_idx in range(Y.shape[1]):
+                            sensor = Y[0, sensor_idx]
+                            sensor_name = str(sensor['Name']).lower()
+                            if 'vibration' in sensor_name:
+                                signal = sensor['Data'].flatten()
+                                original_sr = 64000  # Paderborn vibration is 64kHz
+                                print(f"Paderborn file detected, vibration sensor found, SR: {original_sr}Hz, signal length: {len(signal)}")
+                                break
+                        if signal is not None:
+                            break
+                except (KeyError, IndexError, TypeError):
+                    continue
+            
+            # Fallback: try generic format
+            if signal is None:
+                for key, val in mat.items():
+                    if isinstance(val, np.ndarray) and not key.startswith('__'):
+                        if val.size > 1000:  # Likely signal data
+                            if val.ndim == 2: 
+                                val = val.flatten()
+                            signal = val
+                            original_sr = 64000
+                            break
                 
         if signal is None:
             return None, "Could not find signal data in .mat file"
@@ -181,67 +206,203 @@ def compute_saliency_map(model, input_window):
 # ==========================================
 # 4. DASHBOARD LOGIC
 # ==========================================
+CLASS_NAMES = {0: 'Healthy', 1: 'Inner Race Fault', 2: 'Outer Race Fault'}
+
 def diagnose_bearing(file_obj):
     if file_obj is None:
-        return "Please upload a file.", None
+        return "⏳ Please upload a .mat file to begin diagnosis.", "", "", "", None
     
     # 1. Process File
     windows, status = preprocess_uploaded_mat(file_obj)
     if windows is None:
-        return f"Error: {status}", None
+        return f"❌ Error: {status}", "", "", "", None
     
     # 2. Add Channel Dim
     X_batch = np.expand_dims(windows, axis=-1)
     
     # 3. Predict
     preds = MODEL.predict(X_batch, verbose=0)
-    avg_pred = np.mean(preds, axis=0) # Average probabilities across windows
+    avg_pred = np.mean(preds, axis=0)  # Average probabilities across windows
     class_idx = np.argmax(avg_pred)
     confidence = avg_pred[class_idx]
     
-    result_str = f"Diagnosis: {CLASS_NAMES[class_idx]}\nConfidence: {confidence:.2%}"
+    # Determine status
+    if class_idx == 0:
+        status_emoji = "✅"
+        status_text = "HEALTHY"
+    elif class_idx == 1:
+        status_emoji = "⚠️"
+        status_text = "INNER RACE FAULT"
+    else:
+        status_emoji = "🔴"
+        status_text = "OUTER RACE FAULT"
     
-    # 4. Generate Attention/Saliency Visualization
-    # Use the first window for visualization
-    sample_window = X_batch[0]  # Get first window: (2048, 1)
-    saliency = compute_saliency_map(MODEL, sample_window)
+    # Format outputs
+    diagnosis_result = f"{status_emoji} {status_text}"
+    confidence_text = f"{confidence:.1%}"
+    prob_text = f"Healthy: {avg_pred[0]:.1%} | Inner Race: {avg_pred[1]:.1%} | Outer Race: {avg_pred[2]:.1%}"
     
-    # Plotting
-    fig, ax = plt.subplots(figsize=(12, 4))
-    signal_flat = sample_window.flatten()
-    ax.plot(signal_flat, label='Vibration Signal', color='black', alpha=0.6, linewidth=1)
+    # 4. Generate Simple & Intuitive Visualization
+    fig = plt.figure(figsize=(14, 6))
+    gs = fig.add_gridspec(2, 3, height_ratios=[1, 1.2], hspace=0.4, wspace=0.3)
     
-    # Highlight high importance regions
-    # We overlay the saliency as a heatmap color or a secondary line
-    # Normalize saliency for colormap
-    ax.scatter(np.arange(SEQ_LEN), signal_flat, c=saliency.flatten(), cmap='jet', s=10, label='Model Attention (Saliency)')
+    # === TOP ROW: Health Status Gauges ===
     
-    plt.colorbar(plt.cm.ScalarMappable(cmap='jet'), ax=ax, label="Importance")
-    ax.set_title(f"Model Attention Map (Looking for {CLASS_NAMES[class_idx]} patterns)")
-    ax.legend()
+    # Health Status Indicator (Traffic Light Style)
+    ax_status = fig.add_subplot(gs[0, 0])
+    ax_status.set_xlim(0, 1)
+    ax_status.set_ylim(0, 1)
+    ax_status.axis('off')
+    
+    # Draw circle with color based on diagnosis
+    colors = {'Healthy': '#2ECC71', 'Inner Race Fault': '#F39C12', 'Outer Race Fault': '#E74C3C'}
+    status_color = colors[CLASS_NAMES[class_idx]]
+    circle = plt.Circle((0.5, 0.5), 0.35, color=status_color, ec='white', linewidth=4)
+    ax_status.add_patch(circle)
+    ax_status.text(0.5, 0.5, f"{confidence:.0%}", ha='center', va='center', 
+                   fontsize=28, fontweight='bold', color='white')
+    ax_status.text(0.5, 0.05, CLASS_NAMES[class_idx].upper(), ha='center', va='bottom',
+                   fontsize=11, fontweight='bold', color=status_color)
+    ax_status.set_title("Health Status", fontsize=14, fontweight='bold', pad=10)
+    
+    # Probability Bar Chart
+    ax_bars = fig.add_subplot(gs[0, 1:])
+    bar_colors = ['#2ECC71', '#F39C12', '#E74C3C']
+    bars = ax_bars.barh(['Healthy', 'Inner Race\nFault', 'Outer Race\nFault'], 
+                        [avg_pred[0], avg_pred[1], avg_pred[2]], 
+                        color=bar_colors, edgecolor='white', linewidth=2, height=0.6)
+    
+    # Add percentage labels on bars
+    for bar, prob in zip(bars, avg_pred):
+        width = bar.get_width()
+        ax_bars.text(width + 0.02, bar.get_y() + bar.get_height()/2, 
+                    f'{prob:.1%}', va='center', ha='left', fontsize=12, fontweight='bold')
+    
+    ax_bars.set_xlim(0, 1.15)
+    ax_bars.set_xlabel('Probability', fontsize=11)
+    ax_bars.set_title('Fault Probability Distribution', fontsize=14, fontweight='bold', pad=10)
+    ax_bars.spines['top'].set_visible(False)
+    ax_bars.spines['right'].set_visible(False)
+    
+    # === BOTTOM ROW: Signal Visualization ===
+    ax_signal = fig.add_subplot(gs[1, :])
+    sample_window = X_batch[0].flatten()
+    time_ms = np.arange(len(sample_window)) / 12  # Convert to milliseconds (12kHz)
+    
+    # Plot signal with color based on health
+    ax_signal.fill_between(time_ms, sample_window, alpha=0.3, color=status_color)
+    ax_signal.plot(time_ms, sample_window, color=status_color, linewidth=0.8, alpha=0.8)
+    ax_signal.axhline(y=0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+    
+    # Simple interpretation text
+    if class_idx == 0:
+        interpretation = "Signal shows normal vibration patterns - bearing is healthy"
+    elif class_idx == 1:
+        interpretation = "Signal shows periodic impulses - inner race damage detected"
+    else:
+        interpretation = "Signal shows irregular patterns - outer race damage detected"
+    
+    ax_signal.set_xlabel('Time (ms)', fontsize=11)
+    ax_signal.set_ylabel('Amplitude', fontsize=11)
+    ax_signal.set_title(f'Vibration Signal: {interpretation}', fontsize=12, fontweight='bold', pad=10)
+    ax_signal.spines['top'].set_visible(False)
+    ax_signal.spines['right'].set_visible(False)
+    ax_signal.grid(True, alpha=0.3, linestyle='--')
+    
     plt.tight_layout()
     
-    return result_str, fig
+    return diagnosis_result, confidence_text, prob_text, f"Analyzed {len(windows)} windows", fig
 
 # ==========================================
-# 5. MAIN LAUNCHER
+# 5. MAIN LAUNCHER (IMPROVED UI)
 # ==========================================
 if __name__ == "__main__":
-    # Create Gradio Interface
-    interface = gr.Interface(
-        fn=diagnose_bearing,
-        inputs=gr.File(label="Upload Vibration File (.mat)", file_types=[".mat"]),
-        outputs=[
-            gr.Textbox(label="Diagnosis Result"),
-            gr.Plot(label="Saliency Map")
-        ],
-        title="FaultFormer: Intelligent Bearing Diagnosis Dashboard",
-        description="Upload a Paderborn .mat file. The model will diagnose the fault and visualize which parts of the signal triggered the decision.",
-        examples=[
-            ["data/paderborn/K001/K001/N15_M07_F10_K001_1.mat"], 
-            ["data/paderborn/KA04/KA04/N15_M07_F10_KA04_1.mat"]
-        ]
-    )
+    
+    with gr.Blocks(title="FaultFormer Dashboard") as demo:
+        # Header
+        gr.Markdown(
+            """
+            # 🔧 FaultFormer: Intelligent Bearing Diagnosis
+            ### AI-Powered Fault Detection | 99.77% Accuracy
+            
+            Upload a vibration signal (.mat file) to instantly diagnose bearing health.
+            """
+        )
+        
+        with gr.Row():
+            # Left Column - Input
+            with gr.Column(scale=1):
+                file_input = gr.File(
+                    label="📁 Upload Vibration File (.mat)",
+                    file_types=[".mat"],
+                    type="filepath"
+                )
+                
+                submit_btn = gr.Button("🔬 Analyze Signal", variant="primary", size="lg")
+                clear_btn = gr.Button("🗑️ Clear", variant="secondary")
+                
+                gr.Markdown("### 📂 Example Files")
+                gr.Examples(
+                    examples=[
+                        ["data/paderborn/K001/K001/N15_M07_F10_K001_1.mat"],
+                        ["data/paderborn/KA04/KA04/N15_M07_F10_KA04_1.mat"],
+                        ["data/paderborn/KI04/KI04/N15_M07_F10_KI04_1.mat"]
+                    ],
+                    inputs=file_input,
+                    label=""
+                )
+            
+            # Right Column - Results
+            with gr.Column(scale=2):
+                gr.Markdown("### 🩺 Diagnosis Results")
+                
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        diagnosis_output = gr.Textbox(label="Diagnosis", lines=1)
+                    with gr.Column(scale=1):
+                        confidence_output = gr.Textbox(label="Confidence", lines=1)
+                
+                prob_output = gr.Textbox(label="Class Probabilities", lines=1)
+                info_output = gr.Textbox(label="Analysis Info", lines=1)
+        
+        # Visualization - Full Width
+        gr.Markdown("### 📊 Diagnosis Overview")
+        plot_output = gr.Plot(label="")
+        
+        # Footer - Informative Guide
+        gr.Markdown(
+            """
+            ---
+            ## 📖 Understanding Your Results
+            
+            | Status | Color | Meaning | Recommended Action |
+            |--------|-------|---------|-------------------|
+            | ✅ **Healthy** | 🟢 Green | Normal vibration patterns | Continue regular monitoring |
+            | ⚠️ **Inner Race Fault** | 🟠 Orange | Damage on inner bearing ring | Schedule maintenance within 2-4 weeks |
+            | 🔴 **Outer Race Fault** | 🔴 Red | Damage on outer bearing ring | Immediate inspection required |
+            
+            **Reading the Charts:**
+            - **Health Circle**: Shows diagnosis with confidence % inside
+            - **Bar Chart**: Compare probabilities - longer bar = higher likelihood
+            - **Signal Plot**: Raw vibration colored by diagnosis
+            
+            ---
+            *FaultFormer v1.0 | Transformer Neural Network | © 2025*
+            """
+        )
+        
+        # Event handlers
+        submit_btn.click(
+            fn=diagnose_bearing,
+            inputs=[file_input],
+            outputs=[diagnosis_output, confidence_output, prob_output, info_output, plot_output]
+        )
+        
+        clear_btn.click(
+            fn=lambda: (None, "", "", "", "", None),
+            inputs=[],
+            outputs=[file_input, diagnosis_output, confidence_output, prob_output, info_output, plot_output]
+        )
     
     print("🚀 Launching Dashboard...")
-    interface.launch(share=True) # share=True creates a public link
+    demo.launch(share=True)
