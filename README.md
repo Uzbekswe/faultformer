@@ -44,7 +44,7 @@
 
 | Metric | Transfer Learning | From Scratch |
 |--------|-------------------|--------------|
-| **Accuracy** | **99.77%** | 86.4% |
+| **Accuracy** | **99.91%** | 86.4% |
 | **Convergence** | Fast (< 5 epochs) | Slow (> 12 epochs) |
 | **Precision (Inner Race)** | 0.99 | 0.82 |
 | **Recall (Outer Race)** | 1.00 | 0.88 |
